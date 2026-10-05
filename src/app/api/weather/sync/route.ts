@@ -3,8 +3,6 @@ import { fetchCwaWeather } from "@/lib/cwa/client";
 import { normalizeCwaData } from "@/lib/cwa/normalize";
 import { upsertForecasts, getLastUpdatedInfo } from "@/lib/db/repository";
 
-export const dynamic = "force-dynamic";
-
 let lastSyncTimestamp = 0;
 const MIN_SYNC_INTERVAL_MS = 10_000; // 10 seconds minimum cooldown
 

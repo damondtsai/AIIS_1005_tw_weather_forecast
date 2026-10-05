@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { getLastUpdatedInfo, getAvailableDates } from "@/lib/db/repository";
 
-export const dynamic = "force-dynamic";
-
 /**
  * GET /api/health
  * Health check endpoint for system monitoring, database status, and uptime checks.

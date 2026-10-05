@@ -10,8 +10,6 @@ import { fetchCwaWeather } from "@/lib/cwa/client";
 import { normalizeCwaData } from "@/lib/cwa/normalize";
 import { isValidTaiwanCity, normalizeCityName } from "@/lib/regions";
 
-export const dynamic = "force-dynamic";
-
 /**
  * GET /api/weather
  * Query Parameters:

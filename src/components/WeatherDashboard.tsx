@@ -9,6 +9,9 @@ import WeatherSummary from "./WeatherSummary";
 import TemperatureChart from "./TemperatureChart";
 import ForecastTable from "./ForecastTable";
 import TemperatureLegend from "./TemperatureLegend";
+import sampleJsonData from "@/data/sample_cwa.json";
+import { normalizeCwaData } from "@/lib/cwa/normalize";
+import { CITY_COORDINATES } from "@/lib/city-coordinates";
 import {
   CloudSun,
   Database,
@@ -84,6 +87,76 @@ export default function WeatherDashboard() {
     []
   );
 
+  // Helper to load client-side fallback data (for GitHub Pages static hosting)
+  const loadClientFallback = useCallback((city: string, date?: string) => {
+    try {
+      const allRecords = normalizeCwaData(sampleJsonData as any);
+      const dates = Array.from(new Set(allRecords.map((r) => r.dataDate))).sort();
+      const effectiveDate = date || selectedDate || dates[0] || "";
+
+      const cityForecasts = allRecords.filter((r) => r.locationName === city);
+      const dateRecords = allRecords.filter((r) => r.dataDate === effectiveDate);
+
+      // Group by city for GIS map summaries
+      const cityMap = new Map<string, TemperatureForecast[]>();
+      for (const r of dateRecords) {
+        if (!cityMap.has(r.locationName)) cityMap.set(r.locationName, []);
+        cityMap.get(r.locationName)!.push(r);
+      }
+
+      const summaries: CityForecastSummary[] = [];
+      for (const [locName, slots] of cityMap.entries()) {
+        const coords = CITY_COORDINATES[locName] || { lat: 23.8, lng: 121.0 };
+        let minT: number | null = null;
+        let maxT: number | null = null;
+        let totalAvg = 0;
+        let avgCount = 0;
+        let maxPop: number | null = null;
+
+        for (const s of slots) {
+          if (s.minT !== null) minT = minT === null ? s.minT : Math.min(minT, s.minT);
+          if (s.maxT !== null) maxT = maxT === null ? s.maxT : Math.max(maxT, s.maxT);
+          if (s.avgT !== null) {
+            totalAvg += s.avgT;
+            avgCount++;
+          }
+          if (s.precipitationProbability !== null) {
+            maxPop = maxPop === null ? s.precipitationProbability : Math.max(maxPop, s.precipitationProbability);
+          }
+        }
+        const avgT = avgCount > 0 ? Math.round((totalAvg / avgCount) * 10) / 10 : null;
+        const primarySlot = slots[0];
+
+        summaries.push({
+          locationName: locName,
+          regionName: primarySlot?.regionName || getRegionByCity(locName),
+          dataDate: effectiveDate,
+          minT,
+          maxT,
+          avgT,
+          weather: primarySlot?.weather || "多雲",
+          weatherCode: primarySlot?.weatherCode || "1",
+          precipitationProbability: maxPop,
+          comfort: primarySlot?.comfort || "舒適",
+          lat: coords.lat,
+          lng: coords.lng,
+          timeSlots: slots,
+        });
+      }
+
+      setForecasts(cityForecasts);
+      setCitySummaries(summaries);
+      setAvailableDates(dates);
+      if (!selectedDate && dates.length > 0) {
+        setSelectedDate(dates[0]);
+      }
+      setIsFallback(true);
+      setUpdatedAt(new Date().toISOString());
+    } catch (e) {
+      console.error("Client fallback error:", e);
+    }
+  }, [selectedDate]);
+
   // Fetch forecast data
   const loadWeatherData = useCallback(
     async (city: string, date?: string) => {
@@ -100,6 +173,13 @@ export default function WeatherDashboard() {
         const res = await fetch(`/api/weather?${queryParams.toString()}`, {
           cache: "no-store",
         });
+
+        if (!res.ok) {
+          // If running on static GitHub Pages, fallback to client parsing
+          loadClientFallback(city, date);
+          return;
+        }
+
         const result = await res.json();
 
         if (result.ok) {
@@ -115,15 +195,16 @@ export default function WeatherDashboard() {
             }
           }
         } else {
-          setErrorMessage(result.error || "無法載入天氣預報資料");
+          loadClientFallback(city, date);
         }
       } catch (err) {
-        setErrorMessage("無法連線至氣象伺服器，請檢查網路連線。");
+        // Fallback for static host / network error
+        loadClientFallback(city, date);
       } finally {
         setIsLoading(false);
       }
     },
-    [selectedDate]
+    [selectedDate, loadClientFallback]
   );
 
   // Trigger load on city/date change
