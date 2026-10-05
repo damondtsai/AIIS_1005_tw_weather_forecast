@@ -2,7 +2,7 @@ import { CWAResponseSchema, CWAResponse } from "./schema";
 import sampleJsonData from "@/data/sample_cwa.json";
 
 const CWA_BASE_URL = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/";
-const DEFAULT_DATASET_ID = "F-A0010-001";
+const DEFAULT_DATASET_ID = "F-D0047-091";
 
 export interface FetchCwaResult {
   data: CWAResponse;
