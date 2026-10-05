@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "台灣天氣預報 GIS Dashboard | CWA Open Data",
-  description: "基於中央氣象署開放資料 (F-C0032-001) 與 Next.js + React Leaflet 建立之 36 小時台灣天氣預報 GIS 儀表板",
+  title: "Taiwan Weather Forecast 台灣天氣預報",
+  description: "從氣象資料到互動式天氣預報應用 - 台灣七天天氣預報 GIS Dashboard",
 };
 
 export default function RootLayout({
@@ -13,7 +13,15 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-TW">
-      <body className="antialiased min-h-screen bg-slate-950 text-slate-50">
+      <head>
+        <link
+          rel="stylesheet"
+          href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+          crossOrigin=""
+        />
+      </head>
+      <body className="antialiased min-h-screen bg-slate-50 text-slate-800 font-sans selection:bg-blue-100 selection:text-blue-900">
         {children}
       </body>
     </html>

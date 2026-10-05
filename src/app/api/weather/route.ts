@@ -1,101 +1,89 @@
 import { NextRequest, NextResponse } from "next/server";
-import { queryForecasts, upsertForecasts } from "@/lib/db";
-import { fetchCwaWeather, normalizeCwaData } from "@/lib/cwa";
-import { TAIWAN_COUNTIES, COUNTY_COORDINATES } from "@/lib/constants";
-import { ApiResponse, CountyWeatherSummary, ForecastRecord } from "@/lib/types";
+import {
+  getForecastsByLocation,
+  getCityForecastSummariesByDate,
+  getAvailableDates,
+  getLastUpdatedInfo,
+  upsertForecasts,
+} from "@/lib/db/repository";
+import { fetchCwaWeather } from "@/lib/cwa/client";
+import { normalizeCwaData } from "@/lib/cwa/normalize";
+import { isValidTaiwanCity, normalizeCityName } from "@/lib/regions";
 
-export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(request: NextRequest): Promise<NextResponse<ApiResponse>> {
+/**
+ * GET /api/weather
+ * Query Parameters:
+ *  - location: string (e.g. 臺中市)
+ *  - region: string (e.g. 中部地區)
+ *  - date: string (e.g. 2026-10-05)
+ */
+export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const locationQuery = searchParams.get("location") || searchParams.get("locationName");
+    const locationParam = searchParams.get("location");
+    const dateParam = searchParams.get("date");
 
-    let forecasts: ForecastRecord[] = [];
+    // Check if database has data; if empty, trigger an initial auto-sync
+    let { totalRecords, lastUpdatedAt } = await getLastUpdatedInfo();
+    let isFallback = false;
 
-    // Try DB first
-    try {
-      forecasts = await queryForecasts(locationQuery || undefined);
-    } catch (dbErr) {
-      console.warn("DB query failed, fetching directly from CWA/sample:", dbErr);
-    }
-
-    // If database is empty or failed, fetch directly from CWA / sample dataset
-    if (!forecasts || forecasts.length === 0) {
+    if (totalRecords === 0) {
       try {
-        const { data: cwaData } = await fetchCwaWeather();
-        const records = normalizeCwaData(cwaData);
-        // Try saving in background
-        upsertForecasts(records).catch((e) => console.warn("Background upsert ignored:", e));
-
-        if (locationQuery) {
-          forecasts = records.filter((r) => r.location_name === locationQuery);
-        } else {
-          forecasts = records;
-        }
-      } catch (cwaErr) {
-        console.error("Direct CWA fetch failed:", cwaErr);
+        const cwaResult = await fetchCwaWeather();
+        const records = normalizeCwaData(cwaResult.data);
+        await upsertForecasts(records);
+        const updated = await getLastUpdatedInfo();
+        totalRecords = updated.totalRecords;
+        lastUpdatedAt = updated.lastUpdatedAt;
+        isFallback = cwaResult.isFallback;
+      } catch (syncErr) {
+        console.warn("[Weather API] Initial auto-sync failed:", syncErr);
       }
     }
 
-    if (locationQuery) {
-      // Single county response
-      return NextResponse.json({
-        ok: true,
-        data: forecasts,
-        updatedAt: forecasts[0]?.fetched_at || new Date().toISOString(),
-      });
+    // Available dates
+    const availableDates = await getAvailableDates();
+    const effectiveDate = dateParam || availableDates[0] || new Date().toISOString().slice(0, 10);
+
+    // Validate location parameter if provided
+    let locationData = null;
+    let targetCity = "臺中市";
+
+    if (locationParam) {
+      const normalized = normalizeCityName(locationParam);
+      if (!isValidTaiwanCity(normalized)) {
+        return NextResponse.json(
+          { ok: false, error: `無效的縣市名稱：「${locationParam}」，請輸入正確的台灣 22 縣市名稱。` },
+          { status: 400 }
+        );
+      }
+      targetCity = normalized;
     }
 
-    // Group by county
-    const groupedMap = new Map<string, ForecastRecord[]>();
-    for (const f of forecasts) {
-      const list = groupedMap.get(f.location_name) || [];
-      list.push(f);
-      groupedMap.set(f.location_name, list);
-    }
+    locationData = await getForecastsByLocation(targetCity);
 
-    const summaries: CountyWeatherSummary[] = TAIWAN_COUNTIES.map((c) => {
-      const countyForecasts = groupedMap.get(c.name) || [];
-      const current = countyForecasts[0] || {
-        location_name: c.name,
-        start_time: "",
-        end_time: "",
-        weather: "晴時多雲",
-        weather_code: "1",
-        pop: 0,
-        min_t: 22,
-        max_t: 28,
-        comfort: "舒適",
-        fetched_at: new Date().toISOString(),
-      };
-
-      const coords = COUNTY_COORDINATES[c.name] || [c.lat, c.lng];
-
-      return {
-        locationName: c.name,
-        lat: coords[0],
-        lng: coords[1],
-        region: c.region,
-        currentForecast: current,
-        forecasts: countyForecasts,
-      };
-    });
+    // City summaries for the selected date (for GIS Map & City Cards)
+    const summaryData = await getCityForecastSummariesByDate(effectiveDate);
 
     return NextResponse.json({
       ok: true,
-      data: summaries,
-      total: summaries.length,
-      updatedAt: forecasts[0]?.fetched_at || new Date().toISOString(),
+      data: locationData,
+      summary: summaryData,
+      selectedCity: targetCity,
+      selectedDate: effectiveDate,
+      availableDates,
+      totalRecords,
+      updatedAt: lastUpdatedAt,
+      isFallback,
     });
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : "查詢天氣預報時發生異常";
-    console.error("Weather query error:", error);
+  } catch (error) {
+    console.error("[Weather API Error]:", error);
     return NextResponse.json(
       {
         ok: false,
-        error: `無法讀取氣象預報：${errorMessage}`,
+        error: "讀取氣象預報資料時發生伺服器錯誤，請稍後再試。",
       },
       { status: 500 }
     );

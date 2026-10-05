@@ -1,38 +1,68 @@
-export interface ForecastRecord {
+export interface TemperatureForecast {
   id?: number;
-  location_name: string;
-  start_time: string;
-  end_time: string;
-  weather: string;
-  weather_code?: string;
-  pop: number; // 降雨機率 % (0-100)
-  min_t: number; // 最低溫 °C
-  max_t: number; // 最高溫 °C
-  comfort?: string; // 舒適度
-  fetched_at: string;
-}
-
-export interface CountyLocation {
-  name: string;
-  lat: number;
-  lng: number;
-  region: "北部" | "中部" | "南部" | "東部" | "外島";
-}
-
-export interface CountyWeatherSummary {
+  regionName: string;
   locationName: string;
-  currentForecast: ForecastRecord;
-  forecasts: ForecastRecord[];
-  lat: number;
-  lng: number;
-  region: string;
+  dataDate: string; // YYYY-MM-DD
+  startTime: string; // ISO or YYYY-MM-DD HH:mm:ss
+  endTime: string;
+  minT: number | null;
+  maxT: number | null;
+  avgT: number | null;
+  weather: string;
+  weatherCode: string;
+  precipitationProbability: number | null;
+  comfort: string;
+  fetchedAt: string;
 }
 
-export interface ApiResponse<T = unknown> {
+export interface CityForecastSummary {
+  locationName: string;
+  regionName: string;
+  dataDate: string;
+  minT: number | null;
+  maxT: number | null;
+  avgT: number | null;
+  weather: string;
+  weatherCode: string;
+  precipitationProbability: number | null;
+  comfort: string;
+  lat: number;
+  lng: number;
+  timeSlots: TemperatureForecast[];
+}
+
+export interface WeatherApiResponse {
   ok: boolean;
-  data?: T;
-  error?: string;
-  message?: string;
+  data?: TemperatureForecast[];
+  summary?: CityForecastSummary[];
   updatedAt?: string;
-  total?: number;
+  isFallback?: boolean;
+  error?: string;
+}
+
+export interface SyncApiResponse {
+  ok: boolean;
+  message: string;
+  insertedCount?: number;
+  updatedCount?: number;
+  totalRecords?: number;
+  fetchedAt?: string;
+  isFallback?: boolean;
+  error?: string;
+}
+
+export interface HealthApiResponse {
+  ok: boolean;
+  status: "healthy" | "degraded" | "unhealthy";
+  database: "connected" | "disconnected";
+  totalRecords: number;
+  latestDataDate: string | null;
+  lastUpdatedAt: string | null;
+  timestamp: string;
+  error?: string;
+}
+
+export interface RegionMapping {
+  region: string;
+  cities: string[];
 }
